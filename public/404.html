@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="refresh" content="0; url=/nc-fiscal-explorer/" />
+    <script>
+      (function () {
+        var base = '/nc-fiscal-explorer/';
+        var path = window.location.pathname.replace(base, '');
+        var search = window.location.search || '';
+        var hash = window.location.hash || '';
+
+        if (path && path !== 'index.html') {
+          window.location.replace(base + '#' + path + search + hash);
+        } else {
+          window.location.replace(base + search + hash);
+        }
+      })();
+    </script>
+    <title>NC Fiscal Federalism Explorer</title>
+  </head>
+  <body>
+    <p>Redirecting to the NC Fiscal Federalism Explorer...</p>
+  </body>
+</html>
