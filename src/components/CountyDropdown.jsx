@@ -1,17 +1,15 @@
+import SearchableSelect from './SearchableSelect'
+
 export default function CountyDropdown({ counties, value, onChange }) {
+  const options = counties.map(c => ({ value: c, label: `${c} County` }))
   return (
-    <>
-      <label htmlFor="county-select" className="sr-only">County</label>
-      <select
-        id="county-select"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="pill-select"
-      >
-        {counties.map(c => (
-          <option key={c} value={c}>{c} County</option>
-        ))}
-      </select>
-    </>
+    <SearchableSelect
+      id="county-select"
+      options={options}
+      value={value}
+      onChange={onChange}
+      placeholder="Search counties…"
+      ariaLabel="County"
+    />
   )
 }

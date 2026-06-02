@@ -52,7 +52,52 @@ export const BUDGET_ALLOCATIONS_LOCAL_FALLBACK = {
   other:             0.5498,
 }
 
-// Service definitions (order = display order; Other always last in UI)
+// State "Other" drill-down categories derived from the NC state expenditures-by-committee CSV.
+// Shares sum to 1.0 within the state breakdown.
+export const STATE_OTHER_BREAKDOWN = [
+  { key: 'health_human_services', label: 'Health and Human Services', share: 0.526178 },
+  { key: 'education', label: 'Education', share: 0.286658 },
+  { key: 'transportation', label: 'Transportation', share: 0.108995 },
+  { key: 'justice_public_safety', label: 'Justice and Public Safety', share: 0.050620 },
+  { key: 'natural_economic_resources', label: 'Natural and Economic Resources', share: 0.016752 },
+  { key: 'general_government', label: 'General Government', share: 0.010798 },
+]
+
+// Federal "Other" drill-down categories derived from USAspending obligations by budget function.
+// The final row captures the remainder after the largest categories are shown.
+export const FEDERAL_OTHER_BREAKDOWN = [
+  { key: 'medicare', label: 'Medicare', share: 0.179765 },
+  { key: 'social_security', label: 'Social Security', share: 0.163234 },
+  { key: 'national_defense', label: 'National Defense', share: 0.138653 },
+  { key: 'net_interest', label: 'Net Interest', share: 0.122421 },
+  { key: 'health', label: 'Health', share: 0.112059 },
+  { key: 'income_security', label: 'Income Security', share: 0.074300 },
+  { key: 'general_government', label: 'General Government', share: 0.050049 },
+  { key: 'veterans_benefits', label: 'Veterans Benefits and Services', share: 0.040454 },
+  { key: 'education_workforce', label: 'Education, Training, Employment, and Social Services', share: 0.021683 },
+  { key: 'transportation', label: 'Transportation', share: 0.019360 },
+  { key: 'international_affairs', label: 'International Affairs', share: 0.017660 },
+  { key: 'natural_resources', label: 'Natural Resources and Environment', share: 0.012844 },
+  { key: 'other_federal_programs', label: 'Other Federal Programs', share: 0.047519 },
+]
+
+// Public-purpose taxonomy for "Where your taxes go".
+// These buckets are designed to be understandable to a general audience while
+// still keeping local, state, and federal spending distinct in the UI.
+export const PURPOSE_BUCKETS = [
+  { key: 'education', label: 'Education' },
+  { key: 'health_human_services', label: 'Health & Human Services' },
+  { key: 'transportation_infrastructure', label: 'Transportation & Infrastructure' },
+  { key: 'public_safety_justice', label: 'Public Safety & Justice' },
+  { key: 'government_operations_debt', label: 'Government Operations & Debt' },
+  { key: 'retirement_insurance_transfers', label: 'Retirement, Insurance & Transfers' },
+  { key: 'defense_veterans', label: 'Defense & Veterans' },
+  { key: 'environment_natural_resources', label: 'Environment & Natural Resources' },
+  { key: 'other_residual', label: 'Other / Residual' },
+]
+
+// Legacy service definitions kept for the Who Funds What panel and any other
+// parts of the app that still use the older summary model.
 export const SERVICES = [
   { key: 'k12',               label: 'K–12 Education' },
   { key: 'human_services',    label: 'Human Services (incl. Medicaid)' },

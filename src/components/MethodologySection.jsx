@@ -182,9 +182,9 @@ export default function MethodologySection() {
               Roads 9%, Community Colleges 7%, Other 26%).
             </p>
             <p>
-              <strong>Federal allocations:</strong> OMB Historical Table 3.2 FY2023. Note: ~84.5% of federal
-              outlays go to Social Security, Medicare, defense, and debt service — categories shown under
-              "All Other Government Functions." Only ~15% flows to the four named services.
+              <strong>State and federal Other drill-down (V3):</strong> state detail uses NC OSBM committee
+              expenditures; federal detail uses USAspending budget-function obligations. The drill-down now
+              itemizes the major state and federal components instead of showing a single combined line.
             </p>
             <LimitationList items={[
               '"Human Services (incl. Medicaid)" at the local level reflects county DSS, Medicaid contributions, mental health, and all related programs — not Medicaid alone.',

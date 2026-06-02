@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useTaxData } from './hooks/useTaxData'
 import { getTaxRecord, BRACKET_INCOMES } from './lib/taxUtils'
 import Disclaimer from './components/Disclaimer'
@@ -9,7 +9,6 @@ import MunicipalityDropdown, { UNINCORPORATED } from './components/MunicipalityD
 import TaxBreakdownTable from './components/TaxBreakdownTable'
 import TaxStackedBar from './components/TaxStackedBar'
 import TaxToServices from './components/TaxToServices'
-import PolicySimulation from './components/PolicySimulation'
 import BracketComparePicker from './components/BracketComparePicker'
 import BracketCompareTable from './components/BracketCompareTable'
 import WhoFundsWhat from './components/WhoFundsWhat'
@@ -38,18 +37,11 @@ function getTaxSummaryHeading(record) {
   return 'Local taxes account for the largest share of your burden.'
 }
 
-/**
- * Compute municipal property tax addition at runtime.
- * Both the county rate and municipal rate apply to the same home value, so:
- *   muni_addition = county_burden × (muni_rate / county_rate_per_100)
- * county_rate_per_100 is embedded in the record's property_tax entry (added in V2 join.py).
- */
 function computeMunicipalAddition(record, muniRate) {
   if (!record || !muniRate || muniRate === 0) return 0
   const countyBurden = record.taxes.property_tax?.annual_burden ?? 0
   const countyRate   = record.taxes.property_tax?.county_rate_per_100 ?? 0
   if (countyBurden === 0 || countyRate === 0) return 0
-  // home_value = countyBurden × 100 / countyRate
   const homeValue = (countyBurden * 100) / countyRate
   return Math.round((muniRate / 100) * homeValue)
 }
@@ -66,27 +58,28 @@ export default function App() {
 
   const effectiveCounty = counties.includes(county) ? county : (counties[0] ?? 'Mecklenburg')
 
-  // Reset municipality when county changes (F5 requirement)
-  useEffect(() => {
+  const handleCountyChange = nextCounty => {
+    setCounty(nextCounty)
     setMunicipality(UNINCORPORATED)
-  }, [effectiveCounty])
+  }
 
   const record = data ? getTaxRecord(data, effectiveCounty, bracket, housing) : null
   const compareRecord = compareBracket && data
     ? getTaxRecord(data, effectiveCounty, compareBracket, housing)
     : null
 
-  // F5: Resolve selected municipality's rate
   const selectedMuni = municipality !== UNINCORPORATED ? municipality : null
   const muniRate = selectedMuni && municipalRates?.[effectiveCounty]
     ? (municipalRates[effectiveCounty].find(m => m.name === selectedMuni)?.rate ?? 0)
     : 0
   const muniAddition = computeMunicipalAddition(record, muniRate)
 
-  // F6/F7: County-specific local allocations
-  const countyAlloc = localAllocs?.[effectiveCounty] ?? null
-
+  const countyAlloc   = localAllocs?.[effectiveCounty] ?? null
   const bracketIncome = BRACKET_INCOMES[bracket] ?? 50_000
+  const housingLabel  = housing === 'owner' ? 'a homeowner' : 'a renter'
+  const rangeLabel    = BRACKET_RANGES[bracket] ?? bracket
+
+  const resultKey = `${effectiveCounty}-${bracket}-${housing}-${selectedMuni ?? ''}`
 
   if (error) {
     return (
@@ -99,8 +92,6 @@ export default function App() {
     )
   }
 
-  const housingLabel   = housing === 'owner' ? 'a homeowner' : 'a renter'
-  const rangeLabel     = BRACKET_RANGES[bracket] ?? bracket
   const summaryHeading = getTaxSummaryHeading(record)
   const totalBurden    = (record?.total?.annual_burden ?? 0) + muniAddition
 
@@ -133,7 +124,7 @@ export default function App() {
               {loading ? (
                 <div className="skeleton-select" aria-busy="true" aria-label="Loading counties" />
               ) : (
-                <CountyDropdown counties={counties} value={effectiveCounty} onChange={setCounty} />
+                <CountyDropdown counties={counties} value={effectiveCounty} onChange={handleCountyChange} />
               )}
               <HousingToggle value={housing} onChange={setHousing} />
               <BracketButtons
@@ -165,7 +156,7 @@ export default function App() {
           )}
 
           {!loading && record && (
-            <>
+            <div key={resultKey} className="results-animate">
               <section className="metric-section" aria-label="Total tax burden">
                 <div
                   className="metric-callout"
@@ -192,22 +183,12 @@ export default function App() {
                 />
               </section>
 
-              {/* F1 + F6 + F7: Your Taxes → Services */}
               <TaxToServices
                 record={record}
                 county={effectiveCounty}
                 localAllocations={countyAlloc}
                 municipalAddition={muniAddition}
               />
-
-              {/* Bridging sentence to Who Funds What */}
-              <p className="panel-bridge">
-                The panel below shows how the funding mix works from the <em>government's</em> perspective —
-                which level controls the lever for each service.
-              </p>
-
-              {/* F4: Policy Simulation */}
-              <PolicySimulation record={record} bracket={bracket} />
 
               <div className="compare-section">
                 <BracketComparePicker
@@ -225,7 +206,7 @@ export default function App() {
                   />
                 )}
               </div>
-            </>
+            </div>
           )}
 
           {!loading && !record && data && (

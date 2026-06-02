@@ -21,7 +21,6 @@ function TrendSVG({ data }) {
   const chartH = H - PAD.top - PAD.bottom
 
   const amounts = data.map(d => d.amount)
-  const years   = data.map(d => d.year)
   const minY = Math.min(...amounts) * 0.9
   const maxY = Math.max(...amounts) * 1.05
 
@@ -105,7 +104,7 @@ function TrendSVG({ data }) {
   )
 }
 
-export default function StateTaxTrendChart({ bracket, currentAmount }) {
+export default function StateTaxTrendChart({ bracket }) {
   const trend = getStateTaxTrend(bracket)
   if (!trend || trend.length === 0) return null
 

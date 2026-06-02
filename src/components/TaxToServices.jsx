@@ -1,25 +1,34 @@
 /**
  * TaxToServices.jsx
  * -----------------
- * Feature 1 + F6 + F7: "Your Taxes → Services" bar chart.
+ * Purpose-based "Where your taxes go" section.
  *
- * Crosses user tax burden by level × budget allocation shares to show
- * estimated dollars flowing from this household to each public service.
- *
- * F6: Uses county-specific local allocations from county_local_allocations.json.
- * F7: "All Other" row is expandable to show local sub-categories.
+ * Buckets spending by public purpose rather than a coarse four-bucket model.
+ * Each row preserves local, state, and federal contributions so the user can
+ * see both what the money funds and which level is doing the funding.
  */
 
 import { useState } from 'react'
-import { getServiceAllocations, getLocalOtherBreakdown, formatCurrency } from '../lib/taxUtils'
+import { getTaxonomyAllocations, formatCurrency } from '../lib/taxUtils'
 
-// Neutral palette for service bars (not level-coded)
-const SERVICE_COLOR = '#1a4480'
-const SERVICE_COLOR_OTHER = '#8a9ab5'
+const LEVEL_LABELS = {
+  local: 'Local',
+  state: 'State',
+  federal: 'Federal',
+}
+
+const LEVEL_COLORS = {
+  local: 'var(--chart-property)',
+  state: 'var(--chart-state)',
+  federal: 'var(--chart-federal)',
+}
+
+const LEVEL_ORDER = ['local', 'state', 'federal']
 
 function DataQualityFlag({ flag, county }) {
   const [open, setOpen] = useState(false)
   if (!flag || flag === 'ok') return null
+
   return (
     <span className="dq-flag">
       <button
@@ -40,188 +49,230 @@ function DataQualityFlag({ flag, county }) {
   )
 }
 
-function OtherDrillDown({ serviceItem, localAllocations }) {
-  const [open, setOpen] = useState(false)
+function levelShare(amount, total) {
+  return total > 0 ? (amount / total) * 100 : 0
+}
 
-  // Estimate the local portion of Other
-  // The "amount" in serviceItem is the cross-level total; we need just the local component
-  // We pass localAllocations and use a rough estimate for local portion only
-  const breakdown = localAllocations
-    ? getLocalOtherBreakdown(
-        // Approximate local Other: serviceItem already blends local+state+federal
-        // For the drill-down we show just the local component, labeled explicitly
-        serviceItem._localOtherAmount ?? 0,
-        localAllocations
-      )
-    : null
+function getLevelSummaryRows(rows, grandTotal) {
+  return LEVEL_ORDER.map(level => {
+    const total = rows.reduce((sum, row) => sum + (row[`${level}Amount`] ?? 0), 0)
+    const topRow = rows.reduce((best, row) => {
+      const candidate = row[`${level}Amount`] ?? 0
+      if (!best || candidate > (best[`${level}Amount`] ?? 0)) return row
+      return best
+    }, null)
 
-  if (!breakdown || serviceItem._localOtherAmount === 0) {
-    return null
+    return {
+      level,
+      label: LEVEL_LABELS[level],
+      total,
+      pct: levelShare(total, grandTotal),
+      topPurpose: topRow?.label ?? 'No allocation',
+      topPurposeAmount: topRow?.[`${level}Amount`] ?? 0,
+    }
+  })
+}
+
+function SourceList({ sources }) {
+  const grouped = {
+    local: sources.filter(s => s.level === 'local'),
+    state: sources.filter(s => s.level === 'state'),
+    federal: sources.filter(s => s.level === 'federal'),
   }
 
   return (
-    <div className="other-drilldown">
-      <button
-        type="button"
-        className="drilldown-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
-      >
-        {open ? '▾' : '▸'} Local detail
-      </button>
-      {open && (
-        <div className="drilldown-body">
-          <p className="drilldown-note">
-            Local sub-categories from NC DST County AFIR FY2025.
-            State and federal components are not broken down further in this version.
-          </p>
-          <table className="drilldown-table">
-            <tbody>
-              {breakdown.map(sub => (
-                <tr key={sub.key}>
-                  <td className="drilldown-label">└ {sub.label} <span className="drilldown-scope">(local)</span></td>
-                  <td className="drilldown-amount">{formatCurrency(sub.amount)}</td>
-                </tr>
+    <div className="tts-source-list">
+      {(['local', 'state', 'federal']).map(level => {
+        const levelSources = grouped[level]
+        if (levelSources.length === 0) return null
+        return (
+          <div key={level} className="tts-source-group">
+            <div className="tts-source-group__title">{LEVEL_LABELS[level]}</div>
+            <div className="tts-source-group__items">
+              {levelSources.map(source => (
+                <div key={source.key} className="tts-source-row">
+                  <span className="tts-source-row__label">{source.label}</span>
+                  <span className="tts-source-row__amount">{formatCurrency(source.amount)}</span>
+                </div>
               ))}
-              {serviceItem._stateFederalOtherAmount > 0 && (
-                <tr>
-                  <td className="drilldown-label">└ State &amp; Federal <span className="drilldown-scope">(not further itemized)</span></td>
-                  <td className="drilldown-amount">{formatCurrency(serviceItem._stateFederalOtherAmount)}</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
 export default function TaxToServices({ record, county, localAllocations, municipalAddition = 0 }) {
+  const [openRow, setOpenRow] = useState(null)
   if (!record) return null
 
-  const { taxes } = record
-  const localTotal =
-    (taxes.property_tax?.annual_burden ?? 0) +
-    (taxes.sales_tax_local?.annual_burden ?? 0) +
-    municipalAddition
-  const stateTotal =
-    (taxes.sales_tax_state?.annual_burden ?? 0) +
-    (taxes.state_income_tax?.annual_burden ?? 0)
-  const federalTotal =
-    (taxes.federal_income_tax?.annual_burden ?? 0) +
-    (taxes.payroll_tax?.annual_burden ?? 0)
+  const taxonomy = getTaxonomyAllocations(record, localAllocations, municipalAddition)
+  if (!taxonomy) return null
 
-  const { BUDGET_ALLOCATIONS_STATE, BUDGET_ALLOCATIONS_FEDERAL, BUDGET_ALLOCATIONS_LOCAL_FALLBACK } =
-    import.meta.glob ? {} : {}
-
-  const rawAllocations = getServiceAllocations(record, localAllocations, municipalAddition)
-  if (!rawAllocations) return null
-
-  // Sort: descending amount, Other always last
-  const sorted = [...rawAllocations]
-    .filter(s => s.key !== 'other')
-    .sort((a, b) => b.amount - a.amount)
-
-  const otherItem = rawAllocations.find(s => s.key === 'other')
-
-  // Compute local Other amount for F7 drill-down
-  const localAlloc = localAllocations ?? BUDGET_ALLOCATIONS_LOCAL_FALLBACK
-  const localOtherShare = (typeof localAlloc === 'object' && localAlloc) ? (localAlloc.other ?? 0) : 0
-  const localOtherAmount = Math.round(localTotal * localOtherShare)
-  const stateFederalOtherAmount = otherItem
-    ? Math.round(otherItem.amount - localOtherAmount)
-    : 0
-
-  if (otherItem) {
-    otherItem._localOtherAmount = localOtherAmount
-    otherItem._stateFederalOtherAmount = Math.max(0, stateFederalOtherAmount)
-  }
-
-  const allItems = [...sorted, ...(otherItem ? [otherItem] : [])]
-  const maxAmount = Math.max(...allItems.map(s => s.amount), 1)
-  const dataFlag = rawAllocations[0]?.localDataFlag ?? 'ok'
+  const { rows, localDataFlag } = taxonomy
+  const levelSummaries = getLevelSummaryRows(rows, taxonomy.grandTotal)
 
   return (
     <section className="tts-section" aria-labelledby="tts-heading">
-      <h2 className="section-heading" id="tts-heading">
-        Where your taxes go
-      </h2>
-      <p className="tts-subtitle">
-        Estimated dollars from your tax burden going to each public service,
-        based on budget allocation shares across all levels of government.
-        <DataQualityFlag flag={dataFlag} county={county} />
-      </p>
+      <div className="tts-header">
+        <div>
+          <h2 className="section-heading" id="tts-heading">
+            Where your taxes go
+          </h2>
+          <p className="tts-subtitle">
+            A compact summary shows the level split at a glance. Open the details to see how each level is
+            distributed across public purposes.
+            <DataQualityFlag flag={localDataFlag} county={county} />
+          </p>
+        </div>
 
-      {/* Accessible bar chart */}
-      <div className="tts-chart" role="img" aria-label="Tax to services bar chart">
-        {allItems.map(item => {
-          const isOther = item.key === 'other'
-          const barPct = (item.amount / maxAmount) * 100
-          return (
-            <div key={item.key} className={`tts-row${isOther ? ' tts-row--other' : ''}`}>
-              <div className="tts-row__label">{item.label}</div>
-              <div className="tts-row__bar-wrap">
-                <div
-                  className="tts-row__bar"
-                  style={{
-                    width: `${barPct}%`,
-                    background: isOther ? SERVICE_COLOR_OTHER : SERVICE_COLOR,
-                  }}
-                  aria-hidden="true"
-                />
-              </div>
-              <div className="tts-row__amount">
-                {formatCurrency(item.amount)}
-                <span className="tts-row__pct"> ({(item.pct * 100).toFixed(0)}%)</span>
-              </div>
-              {item.key === 'other' && (
-                <OtherDrillDown
-                  serviceItem={item}
-                  localAllocations={localAllocations}
-                />
-              )}
-              {item.key === 'roads' && localAlloc?.roads === 0 && (
-                <p className="tts-road-note">
-                  County road spending is not separately tracked in the AFIR and is included in
-                  'All Other' at the local level.
-                </p>
-              )}
-              {item.key === 'human_services' && (
-                <p className="tts-hs-note">
-                  At the local level, reflects county Human Services expenditures (Medicaid, DSS,
-                  mental health, and related programs). At the state level, reflects primarily Medicaid.
-                </p>
-              )}
-            </div>
-          )
-        })}
+        <div className="tts-legend" aria-hidden="true">
+          <span className="tts-legend__item">
+            <span className="tts-legend__swatch" style={{ background: LEVEL_COLORS.local }} />
+            Local
+          </span>
+          <span className="tts-legend__item">
+            <span className="tts-legend__swatch" style={{ background: LEVEL_COLORS.state }} />
+            State
+          </span>
+          <span className="tts-legend__item">
+            <span className="tts-legend__swatch" style={{ background: LEVEL_COLORS.federal }} />
+            Federal
+          </span>
+        </div>
       </div>
 
-      {/* Fallback table for screen readers */}
-      <table className="sr-only" aria-label="Tax to services table">
+      <div className="tts-summary" aria-label="Tax to services summary">
+        <div className="tts-summary__bar" aria-hidden="true">
+          {levelSummaries.map(level => (
+            <span
+              key={level.level}
+              className="tts-summary__segment"
+              style={{
+                width: `${Math.max(level.pct, level.total > 0 ? 2 : 0)}%`,
+                background: LEVEL_COLORS[level.level],
+              }}
+            />
+          ))}
+        </div>
+
+        <div className="tts-summary__tiles">
+          {levelSummaries.map(level => (
+            <article key={level.level} className="tts-summary__tile">
+              <div className="tts-summary__tile-head">
+                <span className="tts-summary__tile-label">{level.label}</span>
+                <span className="tts-summary__tile-pct">{level.pct.toFixed(0)}%</span>
+              </div>
+              <div className="tts-summary__tile-amount">{formatCurrency(level.total)}</div>
+              <div className="tts-summary__tile-purpose">
+                Top purpose: {level.topPurpose}
+              </div>
+              <div className="tts-summary__tile-purpose-amount">
+                {formatCurrency(level.topPurposeAmount)}
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <details className="tts-details">
+        <summary className="tts-details__summary">See detailed purpose breakdown</summary>
+
+        <div className="tts-purpose-list" role="list" aria-label="Tax to services by purpose">
+          {rows.map(row => {
+            const isOpen = openRow === row.key
+            const localPct = levelShare(row.localAmount, row.total)
+            const statePct = levelShare(row.stateAmount, row.total)
+            const federalPct = levelShare(row.federalAmount, row.total)
+
+            return (
+              <article key={row.key} className="tts-purpose-card" role="listitem">
+                <div className="tts-purpose-card__head">
+                  <div>
+                    <h3 className="tts-purpose-card__title">{row.label}</h3>
+                    <p className="tts-purpose-card__meta">
+                      {formatCurrency(row.total)} · {levelShare(row.total, taxonomy.grandTotal).toFixed(0)}% of total burden
+                    </p>
+                  </div>
+                  <div className="tts-purpose-card__totals">
+                    <span>Local {formatCurrency(row.localAmount)}</span>
+                    <span>State {formatCurrency(row.stateAmount)}</span>
+                    <span>Federal {formatCurrency(row.federalAmount)}</span>
+                  </div>
+                </div>
+
+                <div className="tts-purpose-card__bar" aria-hidden="true">
+                  {row.localAmount > 0 && (
+                    <span
+                      className="tts-purpose-card__segment"
+                      style={{ width: `${localPct}%`, background: LEVEL_COLORS.local }}
+                    />
+                  )}
+                  {row.stateAmount > 0 && (
+                    <span
+                      className="tts-purpose-card__segment"
+                      style={{ width: `${statePct}%`, background: LEVEL_COLORS.state }}
+                    />
+                  )}
+                  {row.federalAmount > 0 && (
+                    <span
+                      className="tts-purpose-card__segment"
+                      style={{ width: `${federalPct}%`, background: LEVEL_COLORS.federal }}
+                    />
+                  )}
+                </div>
+
+                <div className="tts-purpose-card__chips" aria-hidden="true">
+                  {row.localAmount > 0 && <span className="tts-purpose-chip">Local</span>}
+                  {row.stateAmount > 0 && <span className="tts-purpose-chip">State</span>}
+                  {row.federalAmount > 0 && <span className="tts-purpose-chip">Federal</span>}
+                </div>
+
+                <button
+                  type="button"
+                  className="tts-purpose-card__toggle"
+                  onClick={() => setOpenRow(isOpen ? null : row.key)}
+                  aria-expanded={isOpen}
+                >
+                  {isOpen ? 'Hide source detail' : 'See source detail'}
+                </button>
+
+                {isOpen && <SourceList sources={row.sources} />}
+              </article>
+            )
+          })}
+        </div>
+      </details>
+
+      <table className="sr-only" aria-label="Tax to services by purpose table">
         <thead>
-          <tr><th>Service</th><th>Estimated Annual Amount</th><th>% of Total</th></tr>
+          <tr>
+            <th>Purpose</th>
+            <th>Local</th>
+            <th>State</th>
+            <th>Federal</th>
+            <th>Total</th>
+            <th>% of total burden</th>
+          </tr>
         </thead>
         <tbody>
-          {allItems.map(item => (
-            <tr key={item.key}>
-              <td>{item.label}</td>
-              <td>{formatCurrency(item.amount)}</td>
-              <td>{(item.pct * 100).toFixed(0)}%</td>
+          {rows.map(row => (
+            <tr key={row.key}>
+              <td>{row.label}</td>
+              <td>{formatCurrency(row.localAmount)}</td>
+              <td>{formatCurrency(row.stateAmount)}</td>
+              <td>{formatCurrency(row.federalAmount)}</td>
+              <td>{formatCurrency(row.total)}</td>
+              <td>{levelShare(row.total, taxonomy.grandTotal).toFixed(0)}%</td>
             </tr>
           ))}
         </tbody>
       </table>
 
       <p className="tts-note">
-        These estimates show how your taxes are distributed across public services based on
-        {dataFlag === 'ok'
-          ? ` ${county} County's actual FY2025 expenditure data (local)`
-          : ' statewide average budget allocations (local)'
-        } and statewide averages (state, federal).
-        'All Other Government Functions' includes Social Security, Medicare, defense, debt service
-        (federal), and other programs not shown individually.
+        The chart groups spending by public purpose rather than by a generic catch-all list.
+        Where a source does not fit cleanly, it remains visible in the explicit residual bucket.
         Sources: OSBM FY2024 (state), NC DST County AFIR FY2025 (local), OMB Table 3.2 FY2023 (federal).
       </p>
     </section>
