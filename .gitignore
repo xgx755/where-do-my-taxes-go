@@ -24,4 +24,4 @@ dist-ssr
 *.sw?
 .gstack/
 .claude/
-nc-fiscal-explorer/
+/nc-fiscal-explorer/
